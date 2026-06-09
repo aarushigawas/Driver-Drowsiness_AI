@@ -27,12 +27,11 @@ class YawningDetector:
     def _detect_yawning(self) -> bool:
         if len(self.history) < 10:  # Need some data
             return False
-
+        
+        # Check if mouth has been open wide recently
         recent_ratios = [ratio for _, ratio in self.history]
         max_ratio = max(recent_ratios)
         avg_ratio = sum(recent_ratios) / len(recent_ratios)
-
-        return (
-            max_ratio > self.thresholds.yawn_peak_threshold
-            and avg_ratio > self.thresholds.yawn_avg_threshold
-        )
+        
+        # Yawning if max mouth opening exceeds threshold and sustained
+        return max_ratio > 0.3 and avg_ratio > 0.15

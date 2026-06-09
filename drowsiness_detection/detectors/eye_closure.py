@@ -19,20 +19,22 @@ class EyeClosureDetector:
                 "eye_ratio": None,
             }
         
-        # Eyes are considered closed if opening ratio falls below a stabilized threshold.
-        currently_closed = eye_open_ratio < self.thresholds.eye_closed_threshold
-
+        # Eyes are considered closed if opening ratio is very small
+        currently_closed = eye_open_ratio < 0.1  # Threshold for closed eyes
+        
         if currently_closed and not self.is_closed:
+            # Eyes just closed
             self.closure_timer.start()
             self.is_closed = True
         elif not currently_closed and self.is_closed:
+            # Eyes just opened
             self.closure_timer.stop()
             self.is_closed = False
-
+        
         closure_duration = self.closure_timer.elapsed() if self.is_closed else 0.0
-
+        
         # Sustained closure indicates drowsiness
-        sustained_closed = closure_duration >= self.thresholds.eye_closure_seconds
+        sustained_closed = closure_duration >= 2.0  # 2 seconds of closed eyes
         
         return {
             "eyes_closed": sustained_closed,

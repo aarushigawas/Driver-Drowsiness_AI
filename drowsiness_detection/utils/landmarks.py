@@ -65,26 +65,21 @@ def extract_face_features(result, image_width: int, image_height: int) -> Option
         return None
     
     try:
-        # Normalize by approximate face height so ratios are stable for different distances.
-        top = landmarks[10]
-        bottom = landmarks[152]
-        face_height_pixels = max(abs(bottom.y - top.y) * image_height, 1.0)
-
         # Mouth opening: distance between upper lip (landmark 13) and lower lip (landmark 14)
-        upper_lip = landmarks[13]
-        lower_lip = landmarks[14]
-        mouth_open = abs(upper_lip.y - lower_lip.y) * image_height / face_height_pixels
-
+        upper_lip = _to_pixel(landmarks[13], image_width, image_height)
+        lower_lip = _to_pixel(landmarks[14], image_width, image_height)
+        mouth_open = abs(upper_lip[1] - lower_lip[1]) / image_height  # normalized
+        
         # Left eye opening: distance between upper (159) and lower (145) eyelid
-        left_upper = landmarks[159]
-        left_lower = landmarks[145]
-        left_eye_open = abs(left_upper.y - left_lower.y) * image_height / face_height_pixels
-
+        left_upper = _to_pixel(landmarks[159], image_width, image_height)
+        left_lower = _to_pixel(landmarks[145], image_width, image_height)
+        left_eye_open = abs(left_upper[1] - left_lower[1]) / image_height
+        
         # Right eye opening: distance between upper (386) and lower (374) eyelid  
-        right_upper = landmarks[386]
-        right_lower = landmarks[374]
-        right_eye_open = abs(right_upper.y - right_lower.y) * image_height / face_height_pixels
-
+        right_upper = _to_pixel(landmarks[386], image_width, image_height)
+        right_lower = _to_pixel(landmarks[374], image_width, image_height)
+        right_eye_open = abs(right_upper[1] - right_lower[1]) / image_height
+        
         # Average eye opening
         eye_open_ratio = (left_eye_open + right_eye_open) / 2.0
         

@@ -1,5 +1,4 @@
 import os
-import threading
 import time
 from pathlib import Path
 
@@ -22,11 +21,6 @@ from drowsiness_detection.utils.math_utils import (
     normalized_vertical_displacement,
     signed_angle_difference,
 )
-
-try:
-    import winsound
-except ImportError:
-    winsound = None
 
 MODEL_NAME = "pose_landmarker_lite.task"
 FACE_MODEL_NAME = "face_landmarker.task"
@@ -94,13 +88,12 @@ def overlay_status(frame, status_lines):
     for index, line in enumerate(status_lines):
         y = 20 + index * 26
         color = (0, 255, 0)
-        if index == 0:
-            if "True" in line:
-                color = (0, 0, 255)
-            else:
-                color = (0, 255, 0)
+        if "DROWSY" in line or "unstable" in line.lower():
+            color = (0, 0, 255)
         elif "not detected" in line.lower() or "no pose" in line.lower() or "pose_landmarks" in line.lower():
             color = (0, 255, 255)
+        elif index == 0:
+            color = (0, 255, 0)
         else:
             color = (255, 255, 255)
 
@@ -114,31 +107,6 @@ def overlay_status(frame, status_lines):
             2,
             cv2.LINE_AA,
         )
-
-
-def _alarm_loop(stop_event: threading.Event):
-    while not stop_event.is_set():
-        if winsound:
-            try:
-                winsound.Beep(2000, 300)
-            except RuntimeError:
-                pass
-        time.sleep(0.35)
-
-
-def _start_alarm(stop_event: threading.Event, alarm_thread_holder: dict):
-    if alarm_thread_holder.get("thread") and alarm_thread_holder["thread"].is_alive():
-        return
-    stop_event.clear()
-    alarm_thread = threading.Thread(target=_alarm_loop, args=(stop_event,), daemon=True)
-    alarm_thread_holder["thread"] = alarm_thread
-    alarm_thread.start()
-
-
-def _stop_alarm(stop_event: threading.Event, alarm_thread_holder: dict):
-    stop_event.set()
-    if alarm_thread_holder.get("thread"):
-        alarm_thread_holder["thread"].join(timeout=0.1)
 
 
 def main():
@@ -168,9 +136,6 @@ def main():
     yawning_detector = YawningDetector(thresholds)
     eye_closure_detector = EyeClosureDetector(thresholds)
     decision_engine = DrowsinessDecision(thresholds)
-
-    alarm_stop_event = threading.Event()
-    alarm_thread_holder = {}
 
     capture = cv2.VideoCapture(0)
     if not capture.isOpened():
@@ -247,20 +212,35 @@ def main():
                         eyes_closed=eye_output["eyes_closed"],
                     )
 
-                    status_lines = [
-                        f"DROWSY: {decision['drowsy']}",
-                        f"Steady for 5s: {decision['confirmation_duration'] >= thresholds.drowsiness_confirmation_seconds}",
-                        f"Confirmed: {decision['confirmation_duration']:.1f}/{thresholds.drowsiness_confirmation_seconds:.1f}s",
-                        f"Alarm: {'ON' if decision['drowsy'] else 'OFF'}",
-                    ]
-
-                    if decision["reasons"]:
-                        status_lines.append(decision["reasons"][0])
-
-                    if decision["drowsy"]:
-                        _start_alarm(alarm_stop_event, alarm_thread_holder)
-                    else:
-                        _stop_alarm(alarm_stop_event, alarm_thread_holder)
+                    status_lines.append(
+                        f"Baseline ready: {tilt_output['baseline_ready']} | "
+                        f"Δθ={tilt_output['delta_angle']:.1f}°"
+                    )
+                    status_lines.append(
+                        f"Sustained tilt: {duration_output['duration']:.1f}s / "
+                        f"{thresholds.tilt_duration_seconds:.1f}s"
+                    )
+                    status_lines.append(
+                        f"Nodding signal: {nodding_output['nodding']} | "
+                        f"φ={phi:.3f}"
+                    )
+                    status_lines.append(
+                        f"Shoulder unstable: {shoulder_output['unstable']} | "
+                        f"imbalance={shoulder_output['imbalance']:.3f}"
+                    )
+                    status_lines.append(
+                        f"Yawning: {yawning_output['yawning']} | "
+                        f"mouth={yawning_output['mouth_ratio']:.3f}" if yawning_output['mouth_ratio'] is not None else "Yawning: No face detected"
+                    )
+                    status_lines.append(
+                        f"Eyes closed: {eye_output['eyes_closed']} | "
+                        f"duration={eye_output['closure_duration']:.1f}s | "
+                        f"ratio={eye_output['eye_ratio']:.3f}" if eye_output['eye_ratio'] is not None else "Eyes: No face detected"
+                    )
+                    status_lines.append(
+                        "DROWSY" if decision["drowsy"] else "Alert"
+                    )
+                    status_lines.extend(decision["reasons"])
 
                     cv2.circle(frame, nose, 10, (0, 255, 0), -1)
                     cv2.circle(frame, left_shoulder, 8, (255, 0, 0), -1)
@@ -278,7 +258,6 @@ def main():
         finally:
             if face_landmarker:
                 face_landmarker.close()
-            _stop_alarm(alarm_stop_event, alarm_thread_holder)
 
 
 if __name__ == "__main__":
